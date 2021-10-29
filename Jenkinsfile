@@ -1,44 +1,32 @@
 pipeline {
-	agent none
-
-	triggers {
-		pollSCM 'H/10 * * * *'
-	}
-
-	options {
-		disableConcurrentBuilds()
-		buildDiscarder(logRotator(numToKeepStr: '14'))
-	}
-
-	stages {
-		stage("test: baseline (jdk8)") {
-			agent {
-				docker {
-					image 'adoptopenjdk/openjdk8:latest'
-					args '-v $HOME/.m2:/tmp/jenkins-home/.m2'
+    agent any
+    stages {
+        stage("Clean up") {
+            steps {
+                deleteDir();
+            }
+        }
+        stage("Clone repo") {
+            steps {
+                bat "git clone https://github.com/terry-fee/gs-rest-service"
+            }
+        }
+		stage("Create properties file") {
+			steps {
+				dir("gs-rest-service/complete/src/main") {
+				    bat "mkdir resources || echo"
+				}
+				dir("gs-rest-service/complete/src/main/resources") {
+				    bat "echo server.port=8083 > application.properties"
 				}
 			}
-			options { timeout(time: 30, unit: 'MINUTES') }
-			steps {
-				sh 'test/run.sh'
-			}
 		}
-
-	}
-
-	post {
-		changed {
-			script {
-				slackSend(
-						color: (currentBuild.currentResult == 'SUCCESS') ? 'good' : 'danger',
-						channel: '#sagan-content',
-						message: "${currentBuild.fullDisplayName} - `${currentBuild.currentResult}`\n${env.BUILD_URL}")
-				emailext(
-						subject: "[${currentBuild.fullDisplayName}] ${currentBuild.currentResult}",
-						mimeType: 'text/html',
-						recipientProviders: [[$class: 'CulpritsRecipientProvider'], [$class: 'RequesterRecipientProvider']],
-						body: "<a href=\"${env.BUILD_URL}\">${currentBuild.fullDisplayName} is reported as ${currentBuild.currentResult}</a>")
-			}
+        stage("Build and Test") {
+            steps {
+		dir("gs-rest-service/complete") {
+			bat "mvn clean && mvn install package"
 		}
-	}
+            }
+        }
+    }
 }
